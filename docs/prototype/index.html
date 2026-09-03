@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SayClear 交互原型（讨论稿）</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-screen="flow" data-scene="c">
+  <header class="proto-bar">
+    <div>
+      <h1>SayClear <span class="tag">线框 / 交互稿 · 非开发产品</span></h1>
+      <p class="proto-meta">Mac 桌面悬浮工具示意。后面是「某个 AI 对话框」，前面才是 SayClear。点击左侧切换状态，不必真录音。</p>
+    </div>
+    <div class="keys">
+      <span>录音 <span class="kbd">⌘</span> <span class="settled">第一期按键</span></span>
+      <span class="key-note">按下一次开始、再按一次结束（非按住）· 不用 Ctrl</span>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="rail">
+      <h2>屏幕</h2>
+      <nav class="screens" aria-label="原型屏幕">
+        <button type="button" data-go="flow" class="is-on">总流程<small>从按 ⌘ 到填入，在输入框改字</small></button>
+        <button type="button" data-go="idle">1. 未录音<small>光标在输入框 · 平时几乎看不见</small></button>
+        <button type="button" data-go="record">2. 录音中<small>暗黑圆角条 · 波形 · 左 X 右 OK</small></button>
+        <button type="button" data-go="process">3. Thinking<small>只显示 Thinking · 不弹确认窗</small></button>
+        <button type="button" data-go="success">4. 填入成功<small>正文进输入框 · 无提示条 · 不代发</small></button>
+        <p class="group">5. 失败（可切换示例）</p>
+        <button type="button" data-go="fail-mic">无麦克风权限<small>立刻失败 · 不假装在录</small></button>
+        <button type="button" data-go="fail-field">当前没有可填入框<small>不把半成品填进去</small></button>
+      </nav>
+
+      <section class="notes" id="notes">
+        <article data-for="flow" class="is-on">
+          <h3>总流程</h3>
+          <p><span class="label">这一屏对应需求</span>第 3.3 主路径、第 4 节逐步所见、第 6 节五能力流水线。用户只感知：说话 → Thinking → 输入框里出现可用正文 → 若要改，直接在输入框改。</p>
+          <p class="tbd-box"><span class="label">待确认</span>⌘ 会不会和系统或其它 App 的快捷键冲突。整理中再按 ⌘ 是取消本次还是忽略。</p>
+        </article>
+        <article data-for="idle">
+          <h3>未录音</h3>
+          <p><span class="label">这一屏对应需求</span>4.1 开始前：用户先把光标放进想填入的输入框。产品不替用户选 App。本方案：平时几乎看不见，按 ⌘ 才出现录音条。</p>
+          <p><span class="label">已定</span>入口只有全局快捷键录音；不能打字或粘贴乱口语再整理。第一期不做「打开修改」。</p>
+          <p class="tbd-box"><span class="label">待确认</span>悬浮层是否始终可见一小块，还是仅录音 / Thinking / 失败时出现。菜单栏小图标也未定，本屏故意不画。</p>
+        </article>
+        <article data-for="record">
+          <h3>录音中</h3>
+          <p><span class="label">这一屏对应需求</span>4.2、8.1：按 ⌘ 开始后出现暗黑圆角录音条。中间是波形条纹，表示正在录音。输入框保持原样，不出现半句转写。</p>
+          <p><span class="label">已定</span>左 <strong>X</strong> = 取消这次说话（不填入、作废）。右 <strong>OK</strong> = 结束并去识别/整理，与再按 ⌘ 结束同类。当前按「按下一次开始、再按一次结束」理解（不是按住）。</p>
+          <p class="tbd-box"><span class="label">待确认</span>⌘ 与系统快捷键是否冲突；录音条出现在屏幕上的精确位置。</p>
+        </article>
+        <article data-for="process">
+          <h3>Thinking</h3>
+          <p><span class="label">这一屏对应需求</span>4.3、8.2：结束录音后进入识别/整理。悬浮层<strong>只显示 Thinking</strong>，不要「正在整理，请稍后」。不弹确认窗，不抢当前 App 焦点。五个能力在后台自动发生，用户无感知分步。完成前不填入。</p>
+          <p class="tbd-box"><span class="label">待确认</span>Thinking 时再按 ⌘：取消本次，还是忽略。是否允许极短过渡文案：默认不要先填原文再闪成整理稿。</p>
+        </article>
+        <article data-for="success">
+          <h3>填入成功</h3>
+          <p><span class="label">这一屏对应需求</span>4.4、5.3–5.5、场景 C（可改看场景 B）：锁定意图后的正文直接进入当前输入框。有分点就分点；不要「我理解你的需求是」。<strong>没有</strong>「已填入当前输入框」这类成功提示。SayClear 悬浮层收起。用户直接在输入框里改字、自己点发送。</p>
+          <p><span class="label">已定</span>不代发；不弹是否确认层；不做打开修改。</p>
+          <div class="scene-toggle">
+            <button type="button" data-scene="c" class="is-on">场景 C 中英混合</button>
+            <button type="button" data-scene="b">场景 B 并列改点</button>
+          </div>
+          <p class="tbd-box"><span class="label">待确认</span>若等待期间用户换了输入框，填「结束录音时」还是「完成时当前」的框。</p>
+        </article>
+        <article data-for="fail-mic">
+          <h3>失败 · 无麦克风权限</h3>
+          <p><span class="label">这一屏对应需求</span>8.4：无法录音，因为系统未允许使用麦克风。录音开始时已无权限应立刻失败，不要假装在录音。输入框不填任何内容。不写系统接口名称。</p>
+          <p class="tbd-box"><span class="label">待确认</span>引导去系统设置的具体说法与按钮是否要做；本屏只用短句「去打开麦克风权限后重试」。</p>
+        </article>
+        <article data-for="fail-field">
+          <h3>失败 · 没有可填入的输入框</h3>
+          <p><span class="label">这一屏对应需求</span>8.4：整理已成功，但当前没有能接收文字的位置。不把正文填进错误的地方，也不填半成品。用户可点进一个输入框后再试或重录。</p>
+          <p class="tbd-box"><span class="label">待确认</span>点进输入框后如何重试写入；失败时是否提供可拷贝文稿（第一期已无「打开修改」）。</p>
+        </article>
+      </section>
+    </aside>
+
+    <main class="stage">
+      <section class="flow-board" id="flow-board">
+        <h2>用户逐步看到什么</h2>
+        <p class="lead">SayClear 是 Mac 上的悬浮工具：对着电脑说话，整理后的正文进当前任意输入框。五个能力在 Thinking 内部自动跑完，界面上不分步。要改字，直接在目标输入框改。</p>
+        <div class="flow-legend">
+          <span><i class="swatch"></i>实线 = 已定行为</span>
+          <span><i class="swatch dash"></i>虚线 / 琥珀色 = 仍待确认</span>
+        </div>
+        <ol class="steps">
+          <li class="step">
+            <div class="step-n">1</div>
+            <div>
+              <h3>把光标放进任意输入框</h3>
+              <p>AI 对话框、搜索框、备忘录都行。SayClear 不判断这是不是 AI，也不换两套模板。</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">2</div>
+            <div>
+              <h3>按 <span class="kbd">⌘</span> 开始说话 <span class="settled">第一期按键</span></h3>
+              <p>只有语音。不能打字或粘贴一段乱口语让产品整理。平时几乎看不见。当前按「按下一次开始、再按一次结束」理解，不是按住 Command。</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">3</div>
+            <div>
+              <h3>说话时出现暗黑圆角录音条</h3>
+              <p>布局：<strong>X</strong> · 波形条纹 · <strong>OK</strong>。波形表示正在录音。输入框里此时仍是空的（或用户原来的字），没有半句转写。点 X 取消这次，不填入。</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">4</div>
+            <div>
+              <h3>再按 <span class="kbd">⌘</span> 或点 OK → Thinking</h3>
+              <p>悬浮层只显示 <strong>Thinking</strong>。不要「正在整理，请稍后」。不抢输入框焦点。用户无感知下面这条链：</p>
+              <p class="pipeline"><strong>纠错</strong>（只留最后说法）→ <strong>清洗</strong>（去掉嗯啊那个）→ <strong>分点</strong>（有多条才拆）→ <strong>格式化</strong>（清单或段落）→ <strong>锁定意图并填入</strong>（不是「我理解你的需求是」）</p>
+            </div>
+          </li>
+          <li class="step">
+            <div class="step-n">5</div>
+            <div>
+              <h3>正文出现在输入框 · 无成功提示 · 不代发</h3>
+              <p>SayClear 收起。没有「已填入当前输入框」之类提示。用户自己改几个字（就在这个输入框里），自己点发送或按回车。第一期没有「打开修改」。</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="desktop" id="desktop">
+        <div class="menubar">
+          <div class="left">
+            <span class="apple"></span>
+            <span>对话</span>
+            <span>编辑</span>
+            <span>窗口</span>
+          </div>
+          <span class="hint-idle" data-role="menu-hint">周三 15:53</span>
+        </div>
+
+        <div class="desktop-body">
+          <div class="ghost-hud">本方案：未录音时桌面上没有 SayClear 常驻块。<br />（是否改成始终露出一小块 · 待确认）</div>
+
+          <div class="app-stack" id="app-stack">
+            <p class="spoken-note" id="spoken-note"></p>
+            <div class="app-window" id="app-ai">
+            <div class="win-title">
+              <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span>某个 AI 对话框</span>
+              <span class="win-sub">示意背景 · 不是 SayClear 自己的产品</span>
+            </div>
+            <div class="chat">
+              <div class="bubble me"><span class="who">已发送</span>这个页面的标题字号可以大一点吗？</div>
+              <div class="bubble bot"><span class="who">助手</span>可以。建议标题用 24px，并保持与导航的间距。</div>
+            </div>
+            <div class="composer focused" id="composer">
+              <div class="input-box" id="input-box" contenteditable="true" spellcheck="false"></div>
+              <button type="button" class="send" id="send-btn">发送</button>
+              <div class="send-note" id="send-note">发送键留给用户。SayClear 填入后不会替你按它。要改字，直接在这个输入框里改。</div>
+            </div>
+            </div>
+          </div>
+
+          <div class="app-window hidden" id="app-reader">
+            <div class="win-title">
+              <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span>预览</span>
+              <span class="win-sub">示意：当前窗口没有可输入的框</span>
+            </div>
+            <div class="reader-body">
+              <h3>设计评审纪要（只读）</h3>
+              <p>本次只看视觉稿，不在这个窗口里改需求。</p>
+              <p>页面上没有输入框，光标也不在任何可填入的位置。</p>
+              <p class="no-field">线框说明：用来讨论「整理成功了，但没地方可填」——不是真实预览器。</p>
+            </div>
+          </div>
+
+          <div class="callout near-input">录音 / Thinking 时输入框保持原样，不填半句，焦点仍在这里。</div>
+          <div class="callout near-send">不代发：用户自己检查后再点发送。要改字就在这个框里改。</div>
+          <div class="callout near-bar">点 X 取消这次（不填入）。点 OK 或再按 ⌘ = 结束并去 Thinking。</div>
+
+          <div class="hud" id="hud"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
