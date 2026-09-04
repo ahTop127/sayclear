@@ -9,9 +9,10 @@
 
 1. **整理通道：** 从 wintoken.dev 换为 DeepSeek 官方 `api.deepseek.com`，模型 `deepseek-v4-flash`。短句整理大约 0.6–1 秒，不再是 6–17 秒。
 2. **识别：** 本机 Google gRPC 流式握手失败，已关闭。说完后走 REST `chirp_3`，避免失败流式再空等 8 秒。录音改为内存 PCM，不再写 wav、不再等 ffmpeg 最多 3 秒。
-3. **短确认语：** 「好的」「是的」等是要填进输入框的正文，不再当垃圾词输出空结果。
-4. **悬浮层：** Thinking 居中；Thinking 时底部从左到右进度条。⌘ 开始 / 结束（或点 OK）各响一次系统短提示音；点 X 取消不响。
-5. **测试：** `docs/SayClear-测试用例.md` 与 `tests/run_sayclear_cases.py`。
+3. **短确认语：** 「好的」「是的」「可以」「收到」这类有交际意图的短句是正文，会填入；「嗯」「那个」这类垫话才丢掉。不是只认「好的 / 是的」两个词。
+4. **整理：** 关闭 DeepSeek 深度思考，只走快速回答。
+5. **悬浮层：** Thinking 居中；Thinking 时底部从左到右进度条。⌘ 开始 / 结束（或点 OK）各响一次系统短提示音；点 X 取消不响。
+6. **测试：** `docs/SayClear-测试用例.md` 与 `tests/run_sayclear_cases.py`。
 
 ## 产品行为（未改）
 
@@ -21,9 +22,8 @@
 
 ## 运行
 
-见仓库 [README](./README.md)。本机日常：
+见仓库 [README](./README.md)。在项目目录执行：
 
 ```bash
-cd /Users/kimberly/project/voice/未命名
 ./run_sayclear.sh
 ```

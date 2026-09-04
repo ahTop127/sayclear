@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import socket
 import ssl
 from urllib.parse import urlparse
@@ -34,32 +35,21 @@ def warmup_organize() -> None:
         print("organize warmup:", exc, flush=True)
 
 
-_SHORT_REPLIES = {
-    "好的",
-    "好",
-    "是的",
-    "是",
-    "对",
-    "对的",
-    "对对",
-    "对对对",
-    "行",
-    "可以",
-    "没问题",
-    "嗯",
-    "嗯嗯",
-    "ok",
-    "okay",
-    "yes",
-    "yeah",
-}
+# 整段都是垫话时不当成正文。短句是否确认语由模型判断；这里只在模型空返回时兜底。
+_FILLER_ONLY = re.compile(
+    r"^(嗯+|啊+|呃+|额+|唔+|哦+|喔+|哈+|那个+|就是+|你知道吧)+$",
+    re.IGNORECASE,
+)
 
 
 def short_reply_passthrough(transcript: str) -> str | None:
     raw = transcript.strip().strip("。.!！，,、 ")
     if not raw:
         return None
-    if raw.lower() in _SHORT_REPLIES or raw in _SHORT_REPLIES:
+    compact = re.sub(r"[\s，,。.!！、？?]+", "", raw)
+    if not compact or _FILLER_ONLY.match(compact):
+        return None
+    if len(compact) <= 12:
         return raw
     return None
 
@@ -72,7 +62,9 @@ def organize(transcript: str) -> str:
         "model": ORGANIZE_MODEL,
         "temperature": 0.3,
         "max_tokens": 1024,
+        # V4 默认开思考；整理只要快速出正文。
         "thinking": {"type": "disabled"},
+        "reasoning_effort": "none",
         "messages": [
             {"role": "system", "content": ORGANIZE_SYSTEM},
             {"role": "user", "content": transcript},

@@ -8,7 +8,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sayclear.organize import OrganizeError, looks_usable, organize
+from sayclear.organize import (
+    OrganizeError,
+    looks_usable,
+    organize,
+    short_reply_passthrough,
+)
 
 
 @dataclass
@@ -156,6 +161,24 @@ CASES = [
         [contains_all("是的")],
         "短确认语要填入",
     ),
+    Case(
+        "O9c",
+        "可以",
+        [contains_all("可以")],
+        "确认语不限于好的/是的",
+    ),
+    Case(
+        "O9d",
+        "收到",
+        [contains_all("收到")],
+        "确认语不限于好的/是的",
+    ),
+    Case(
+        "O9e",
+        "那个那个",
+        [empty_or_fail()],
+        "无意义垫话不应填入",
+    ),
 ]
 
 
@@ -209,6 +232,10 @@ def run_client_cases() -> list[Result]:
     )
     ok = looks_usable("好的") is True
     rows.append(Result("C4", ok, 0, "好的", [] if ok else ["「好的」应可作为正文"]))
+    ok = short_reply_passthrough("收到") == "收到"
+    rows.append(Result("C5", ok, 0, "收到", [] if ok else ["短确认应可兜底填入"]))
+    ok = short_reply_passthrough("那个那个") is None
+    rows.append(Result("C6", ok, 0, "那个那个", [] if ok else ["垫话不应兜底填入"]))
     return rows
 
 
@@ -228,8 +255,9 @@ def main() -> int:
         for msg in result.failed:
             print("   !", msg)
         print(flush=True)
-    results.extend(run_client_cases())
-    for row in results[-3:]:
+    client_rows = run_client_cases()
+    results.extend(client_rows)
+    for row in client_rows:
         print(f"{row.id}  {'PASS' if row.ok else 'FAIL'}  {'; '.join(row.failed)}")
     passed = sum(1 for r in results if r.ok)
     print("-" * 60)

@@ -8,9 +8,9 @@ Mac 桌面悬浮工具，不是浏览器插件、也不是输入法。
 
 ---
 
-## 别人从零开始怎么用
+## 怎么用
 
-下面假设对方是第一次在自己的 Mac 上跑这个项目。
+第一次在 Mac 上跑这个项目，按下面做。
 
 ### 1. 环境
 
@@ -74,9 +74,11 @@ gcloud config set project sayclear
 ./run_sayclear.sh
 ```
 
-菜单栏右侧出现 **SC** 即表示已运行。终端会打印当前用的 Python 路径，方便你对照权限里勾的是不是同一个。
+菜单栏右侧出现 **SC** 即表示已运行。终端会打印当前用的 Python 路径，方便对照权限里勾的是不是同一个。不要用系统自带的 `python3` 启动。
 
 退出：点菜单栏 **SC → 退出 SayClear**，或在终端 `Ctrl+C`。
+
+配过 `.env` 和系统权限之后，以后每次在项目目录再执行 `./run_sayclear.sh` 即可。如果 ⌘ 没反应，多半是辅助功能里勾的不是 `/opt/anaconda3/bin/python3`。
 
 ### 5. 日常怎么口述
 
@@ -86,28 +88,7 @@ gcloud config set project sayclear
 4. 正文出现在当前输入框。自己检查、改几个字，**自己**按回车或点发送。SayClear 不会代发。
 5. 说错了、不想要了：录音时点胶囊左侧 **X**，这次作废，输入框不变。
 
-「好的」「是的」这类短确认语会作为正文填入，不会被当成垃圾词丢掉。
-
----
-
-## 你自己每次在本机怎么启动
-
-权限和 `.env` 配过一次之后，**每天只需**：
-
-```bash
-cd /Users/kimberly/project/voice/未命名
-./run_sayclear.sh
-```
-
-看到菜单栏 **SC**，把光标放进输入框，点 ⌘ 说话即可。
-
-可选：把 `run_sayclear.sh` 拖到 Dock，或在终端加别名（写在你自己的 `~/.zshrc` 里，不要写进仓库）：
-
-```bash
-alias sayclear='cd /Users/kimberly/project/voice/未命名 && ./run_sayclear.sh'
-```
-
-如果 ⌘ 没反应，多半是辅助功能里勾的不是 `/opt/anaconda3/bin/python3`。如果没有声音或识别失败，检查麦克风权限。不要用系统 `python3` 启动。
+「好的」「是的」「可以」「收到」这类短确认语是用户要填进输入框的正文，会保留。只有「嗯」「那个」这类没有信息量的垫话才会被丢掉。
 
 ---
 
@@ -119,7 +100,8 @@ alias sayclear='cd /Users/kimberly/project/voice/未命名 && ./run_sayclear.sh'
 - 去掉本机不可用的 Google gRPC 流式（它曾把识别拖慢）；仍是说完后 REST 识别
 - 内存 PCM 录音，去掉写文件和 ffmpeg 长等待
 - Thinking 居中，并加从左到右进度条；⌘ 开始/结束有提示音
-- 「好的 / 是的」等短句会填入输入框
+- 短确认语（好的、是的、可以、收到等）会填入输入框；无意义垫话仍会丢掉
+- 整理关闭深度思考，走快速回答
 - 补充自动测试用例 `tests/run_sayclear_cases.py`
 
 不要把 `.env`、服务账号 JSON 提交进 git。
