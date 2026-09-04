@@ -1,18 +1,33 @@
 from __future__ import annotations
 
 import base64
-import json
-import urllib.error
-import urllib.request
+import io
+import threading
+import time
+import wave
+from typing import Optional
+
+import requests
 
 from .env import PROJECT_ID
+from .recorder import SAMPLE_RATE
 
 
 class SpeechError(Exception):
     pass
 
 
-def _token() -> str:
+_token: Optional[str] = None
+_token_exp = 0.0
+_http = requests.Session()
+_http.headers.update({"User-Agent": "curl/8.0"})
+
+
+def _token_value() -> str:
+    global _token, _token_exp
+    now = time.time()
+    if _token and now < _token_exp - 60:
+        return _token
     import google.auth
     from google.auth.transport.requests import Request
 
@@ -22,71 +37,115 @@ def _token() -> str:
     creds.refresh(Request())
     if not creds.token:
         raise SpeechError("无法取得 Google 登录凭证")
-    return creds.token
+    _token = creds.token
+    expiry = getattr(creds, "expiry", None)
+    _token_exp = expiry.timestamp() if expiry else now + 3000
+    return _token
+
+
+def prefetch_token() -> None:
+    try:
+        _token_value()
+    except Exception as exc:
+        print("stt warmup:", exc, flush=True)
+
+
+def pcm_to_wav(pcm: bytes, rate: int = SAMPLE_RATE) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(rate)
+        wav.writeframes(pcm)
+    return buf.getvalue()
+
+
+def _parse_results(payload: dict) -> str:
+    texts = []
+    for result in payload.get("results") or []:
+        alts = result.get("alternatives") or []
+        if alts and alts[0].get("transcript"):
+            texts.append(alts[0]["transcript"].strip())
+    return " ".join(texts).strip()
+
+
+def transcribe_pcm(pcm: bytes) -> str:
+    return transcribe(pcm_to_wav(pcm))
 
 
 def transcribe(wav_bytes: bytes) -> str:
     b64 = base64.b64encode(wav_bytes).decode("ascii")
-    attempts = [
-        {
-            "url": (
-                f"https://us-speech.googleapis.com/v2/projects/{PROJECT_ID}"
-                "/locations/us/recognizers/_:recognize"
-            ),
-            "body": {
-                "config": {
-                    "autoDecodingConfig": {},
-                    "languageCodes": ["cmn-Hans-CN", "en-US"],
-                    "model": "chirp_3",
-                },
-                "content": b64,
-            },
+    url = (
+        f"https://us-speech.googleapis.com/v2/projects/{PROJECT_ID}"
+        "/locations/us/recognizers/_:recognize"
+    )
+    body = {
+        "config": {
+            "autoDecodingConfig": {},
+            "languageCodes": ["cmn-Hans-CN", "en-US"],
+            "model": "chirp_3",
         },
-        {
-            "url": (
-                f"https://speech.googleapis.com/v2/projects/{PROJECT_ID}"
-                "/locations/global/recognizers/_:recognize"
-            ),
-            "body": {
-                "config": {
-                    "autoDecodingConfig": {},
-                    "languageCodes": ["cmn-Hans-CN", "en-US"],
-                    "model": "long",
-                },
-                "content": b64,
-            },
-        },
-    ]
-    token = _token()
-    last = "识别失败"
-    for attempt in attempts:
-        req = urllib.request.Request(
-            attempt["url"],
-            data=json.dumps(attempt["body"]).encode("utf-8"),
+        "content": b64,
+    }
+    token = _token_value()
+    try:
+        resp = _http.post(
+            url,
+            json=body,
             headers={
                 "Authorization": "Bearer " + token,
-                "Content-Type": "application/json",
                 "x-goog-user-project": PROJECT_ID,
-                "User-Agent": "curl/8.0",
             },
-            method="POST",
+            timeout=60,
         )
-        try:
-            with urllib.request.urlopen(req, timeout=90) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            last = exc.read().decode("utf-8", errors="replace")[:400]
-            continue
-        except OSError as exc:
-            last = str(exc)
-            continue
-        texts = []
-        for result in payload.get("results") or []:
-            alts = result.get("alternatives") or []
-            if alts and alts[0].get("transcript"):
-                texts.append(alts[0]["transcript"].strip())
-        text = " ".join(texts).strip()
-        if text:
-            return text
-        last = "没有听出内容"
-    raise SpeechError(last)
+    except requests.RequestException as exc:
+        raise SpeechError(str(exc)) from exc
+    if resp.status_code >= 400:
+        raise SpeechError(resp.text[:400])
+    text = _parse_results(resp.json())
+    if not text:
+        raise SpeechError("没有听出内容")
+    return text
+
+
+class LiveRecognizer:
+    """本机 gRPC 流式连不上（握手失败）。录音中只缓存 PCM，结束立刻走 REST。"""
+
+    def __init__(self) -> None:
+        self._pcm = bytearray()
+        self._lock = threading.Lock()
+        self._active = False
+        self._mode = "idle"
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    def start(self) -> None:
+        with self._lock:
+            self._pcm = bytearray()
+        self._active = True
+        self._mode = "buffer"
+
+    def push(self, pcm: bytes) -> None:
+        if not self._active or not pcm:
+            return
+        with self._lock:
+            self._pcm.extend(pcm)
+
+    def cancel(self) -> None:
+        self._active = False
+        with self._lock:
+            self._pcm = bytearray()
+        self._mode = "idle"
+
+    def finish(self) -> str:
+        self._active = False
+        with self._lock:
+            pcm = bytes(self._pcm)
+        self._mode = "rest"
+        if len(pcm) < SAMPLE_RATE:
+            raise SpeechError("没有听出内容")
+        text = transcribe_pcm(pcm)
+        self._mode = "done"
+        return text

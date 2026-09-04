@@ -10,6 +10,7 @@ from AppKit import (
     NSMakeRect,
     NSPanel,
     NSScreen,
+    NSTextAlignmentCenter,
     NSTextField,
     NSView,
     NSWindowStyleMaskBorderless,
@@ -54,6 +55,27 @@ class BarsView(NSView):
             path.fill()
 
 
+class ProgressView(NSView):
+    def initWithFrame_(self, frame):
+        self = objc_super(ProgressView, self).initWithFrame_(frame)
+        if self is None:
+            return None
+        self.progress = 0.0
+        return self
+
+    def drawRect_(self, rect) -> None:
+        bounds = self.bounds()
+        bar_h = min(3.0, bounds.size.height)
+        track = NSMakeRect(0, (bounds.size.height - bar_h) / 2, bounds.size.width, bar_h)
+        NSColor.colorWithWhite_alpha_(0.22, 1).set()
+        NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(track, 1.5, 1.5).fill()
+        fill_w = max(6.0, bounds.size.width * min(1.0, max(0.0, float(self.progress))))
+        fill = NSMakeRect(0, track.origin.y, fill_w, bar_h)
+        NSColor.colorWithWhite_alpha_(0.92, 1).set()
+        NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(fill, 1.5, 1.5).fill()
+
+
+
 class Hud(NSObject):
     def init(self):
         self = objc_super(Hud, self).init()
@@ -67,7 +89,9 @@ class Hud(NSObject):
         self.cancel_btn = None
         self.ok_btn = None
         self.think_label = None
+        self.progress = None
         self.fail_label = None
+        self._thinking = False
         return self
 
     @python_method
@@ -95,7 +119,6 @@ class Hud(NSObject):
         window.setHasShadow_(True)
         window.setIgnoresMouseEvents_(False)
         window.setHidesOnDeactivate_(False)
-        # canJoinAllSpaces | stationary，避免进全屏主窗口行为
         window.setCollectionBehavior_(1 << 0 | 1 << 4)
         window.setFloatingPanel_(True)
         window.setBecomesKeyOnlyIfNeeded_(True)
@@ -134,17 +157,22 @@ class Hud(NSObject):
         bars = BarsView.alloc().initWithFrame_(NSMakeRect(32, 11, 68, 16))
         self.bars = bars
 
-        think = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 8, width, 22))
+        think = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 14, width, 20))
         think.setBezeled_(False)
+        think.setBordered_(False)
         think.setDrawsBackground_(False)
         think.setEditable_(False)
         think.setSelectable_(False)
-        think.setAlignment_(2)
+        think.setAlignment_(NSTextAlignmentCenter)
         think.setStringValue_("Thinking")
-        think.setTextColor_(NSColor.colorWithWhite_alpha_(0.95, 1))
-        think.setFont_(NSFont.systemFontOfSize_weight_(13, 0.4))
+        think.setTextColor_(NSColor.colorWithWhite_alpha_(0.96, 1))
+        think.setFont_(NSFont.systemFontOfSize_weight_(13, 0.45))
         think.setHidden_(True)
         self.think_label = think
+
+        bar = ProgressView.alloc().initWithFrame_(NSMakeRect(12, 7, width - 24, 4))
+        bar.setHidden_(True)
+        self.progress = bar
 
         fail = NSTextField.alloc().initWithFrame_(NSMakeRect(12, 6, 108, 26))
         fail.setBezeled_(False)
@@ -161,6 +189,7 @@ class Hud(NSObject):
         content.addSubview_(ok)
         content.addSubview_(bars)
         content.addSubview_(think)
+        content.addSubview_(bar)
         content.addSubview_(fail)
         self.window = window
 
@@ -176,13 +205,20 @@ class Hud(NSObject):
         if self.bars and not self.bars.isHidden():
             self.bars.phase += 0.28
             self.bars.setNeedsDisplay_(True)
+        if self._thinking and self.progress and not self.progress.isHidden():
+            self.progress.progress += 0.028
+            if self.progress.progress >= 1.0:
+                self.progress.progress = 0.0
+            self.progress.setNeedsDisplay_(True)
 
     @python_method
     def show_record(self) -> None:
+        self._thinking = False
         self.cancel_btn.setHidden_(False)
         self.ok_btn.setHidden_(False)
         self.bars.setHidden_(False)
         self.think_label.setHidden_(True)
+        self.progress.setHidden_(True)
         self.fail_label.setHidden_(True)
         self._resize(132, 38)
         self.window.orderFront_(None)
@@ -190,21 +226,26 @@ class Hud(NSObject):
 
     @python_method
     def show_thinking(self) -> None:
+        self._thinking = True
+        self.progress.progress = 0.08
         self.cancel_btn.setHidden_(True)
         self.ok_btn.setHidden_(True)
         self.bars.setHidden_(True)
         self.think_label.setHidden_(False)
+        self.progress.setHidden_(False)
         self.fail_label.setHidden_(True)
-        self._resize(132, 38)
+        self._resize(148, 42)
         self.window.orderFront_(None)
-        self._stop_timer()
+        self._start_timer()
 
     @python_method
     def show_error(self, title: str) -> None:
+        self._thinking = False
         self.cancel_btn.setHidden_(True)
         self.ok_btn.setHidden_(True)
         self.bars.setHidden_(True)
         self.think_label.setHidden_(True)
+        self.progress.setHidden_(True)
         self.fail_label.setHidden_(False)
         self.fail_label.setStringValue_(title)
         self._resize(220, 44)
@@ -213,6 +254,7 @@ class Hud(NSObject):
 
     @python_method
     def hide(self) -> None:
+        self._thinking = False
         self._stop_timer()
         self.window.orderOut_(None)
 
@@ -224,7 +266,9 @@ class Hud(NSObject):
         self.window.setFrame_display_(NSMakeRect(x, y, width, height), True)
         content = self.window.contentView()
         content.setFrame_(NSMakeRect(0, 0, width, height))
-        self.think_label.setFrame_(NSMakeRect(0, 8, width, 22))
+        content.layer().setCornerRadius_(height / 2)
+        self.think_label.setFrame_(NSMakeRect(0, 14, width, 20))
+        self.progress.setFrame_(NSMakeRect(12, 7, width - 24, 4))
         self.fail_label.setFrame_(NSMakeRect(12, 8, width - 24, 28))
 
     @python_method

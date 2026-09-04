@@ -21,5 +21,5 @@ def load_env() -> dict[str, str]:
 ENV = load_env()
 PROJECT_ID = ENV.get("GOOGLE_CLOUD_PROJECT", "sayclear")
 ORGANIZE_KEY = ENV.get("CUN_AI_API_KEY", "")
-ORGANIZE_BASE = ENV.get("CUN_AI_BASE_URL", "https://wintoken.dev/v1").rstrip("/")
-ORGANIZE_MODEL = ENV.get("CUN_AI_MODEL", "deepseek-v4-flash-0731")
+ORGANIZE_BASE = ENV.get("CUN_AI_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
+ORGANIZE_MODEL = ENV.get("CUN_AI_MODEL", "deepseek-v4-flash")

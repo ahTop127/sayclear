@@ -17,10 +17,12 @@ from objc import super as objc_super
 
 from .hotkey import CommandTap
 from .hud import Hud
-from .organize import OrganizeError, looks_usable, organize
+from .organize import OrganizeError, looks_usable, organize, warmup_organize
 from .paste import paste_text
-from .recorder import RecordError, Recorder
-from .stt import SpeechError, transcribe
+from .recorder import RecordError, Recorder, warmup_mic
+from .stt import LiveRecognizer, SpeechError, prefetch_token
+from .sounds import play_cue
+from .timing import log_timing, now
 
 
 IDLE = "idle"
@@ -35,6 +37,7 @@ class SayClearApp(NSObject):
             return None
         self.state = IDLE
         self.recorder = Recorder()
+        self.stt = LiveRecognizer()
         self.hud = None
         self._gen = 0
         self._status = None
@@ -56,6 +59,14 @@ class SayClearApp(NSObject):
         menu.addItem_(quit_item)
         self._status.setMenu_(menu)
         CommandTap(self._on_command).start()
+        threading.Thread(target=self._warmup, name="sayclear-warmup", daemon=True).start()
+
+    @python_method
+    def _warmup(self) -> None:
+        warmup_mic()
+        prefetch_token()
+        warmup_organize()
+        print("warmup done", flush=True)
 
     @python_method
     def _on_command(self) -> None:
@@ -73,6 +84,7 @@ class SayClearApp(NSObject):
     def _on_cancel(self) -> None:
         if self.state != RECORDING:
             return
+        self.stt.cancel()
         try:
             self.recorder.stop()
         except RecordError:
@@ -89,17 +101,21 @@ class SayClearApp(NSObject):
     @python_method
     def _begin_record(self) -> None:
         try:
-            self.recorder.start()
+            self.stt.start()
+            self.recorder.start(on_chunk=self.stt.push)
         except RecordError as exc:
+            self.stt.cancel()
             self._fail("无法录音。打开麦克风权限后重试。")
             print("record start:", exc)
             return
         self.state = RECORDING
+        play_cue()
         self.hud.show_record()
 
     @python_method
     def _finish_record(self) -> None:
         self.state = THINKING
+        play_cue()
         self.hud.show_thinking()
         self._gen += 1
         gen = self._gen
@@ -107,14 +123,18 @@ class SayClearApp(NSObject):
 
     @python_method
     def _pipeline(self, gen: int) -> None:
+        t0 = now()
         try:
-            audio = self.recorder.stop()
-            if audio is None:
+            pcm = self.recorder.stop()
+            t1 = now()
+            if pcm is None:
                 raise RecordError("没有录到声音")
-            transcript = transcribe(audio)
+            transcript = self.stt.finish()
+            t2 = now()
             text = organize(transcript)
             if not looks_usable(text):
                 raise OrganizeError("整理结果不可用")
+            t3 = now()
         except RecordError:
             self._later(gen, lambda: self._fail("没有录到声音，靠近再试一次。"))
             return
@@ -130,6 +150,15 @@ class SayClearApp(NSObject):
             self._later(gen, lambda: self._fail("这次没完成，稍后重试。"))
             traceback.print_exc()
             return
+        log_timing(
+            {
+                "stop": t1 - t0,
+                "stt": t2 - t1,
+                "organize": t3 - t2,
+                "ok_to_text": t3 - t0,
+            },
+            extra=f"chars={len(text)} stt={self.stt.mode}",
+        )
         self._later(gen, lambda: self._succeed(text))
 
     @python_method
@@ -150,6 +179,7 @@ class SayClearApp(NSObject):
 
     @python_method
     def _succeed(self, text: str) -> None:
+        t0 = now()
         self.state = IDLE
         self.hud.hide()
         try:
@@ -157,6 +187,8 @@ class SayClearApp(NSObject):
         except Exception:
             traceback.print_exc()
             self._fail("这次没能把文字放进去。")
+            return
+        log_timing({"paste": now() - t0})
 
     @python_method
     def _fail(self, message: str) -> None:

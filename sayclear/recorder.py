@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import os
 import shutil
-import signal
 import subprocess
-import tempfile
-from typing import Optional
+import threading
+from typing import Callable, Optional
+
+
+SAMPLE_RATE = 16000
+CHANNELS = 1
+CHUNK_BYTES = 3200  # 100ms of 16-bit mono PCM
 
 
 class RecordError(Exception):
     pass
+
+
+_mic_index: Optional[int] = None
 
 
 def _ffmpeg() -> str:
@@ -27,6 +34,9 @@ def _ffmpeg() -> str:
 
 
 def pick_mic_index() -> int:
+    global _mic_index
+    if _mic_index is not None:
+        return _mic_index
     proc = subprocess.run(
         [_ffmpeg(), "-f", "avfoundation", "-list_devices", "true", "-i", ""],
         capture_output=True,
@@ -35,6 +45,7 @@ def pick_mic_index() -> int:
     text = (proc.stderr or "") + (proc.stdout or "")
     in_audio = False
     fallback: Optional[int] = None
+    chosen: Optional[int] = None
     for line in text.splitlines():
         if "AVFoundation audio devices" in line:
             in_audio = True
@@ -55,76 +66,124 @@ def pick_mic_index() -> int:
             if fallback is None:
                 fallback = idx
             continue
-        if "麦克风" in name:
-            return idx
+        if "麦克风" in name or "MacBook" in name:
+            chosen = idx
+            break
         if fallback is None:
             fallback = idx
-        if "MacBook" in name:
-            return idx
-    if fallback is not None:
-        return fallback
-    return 1
+    _mic_index = chosen if chosen is not None else (fallback if fallback is not None else 1)
+    return _mic_index
+
+
+def warmup_mic() -> None:
+    try:
+        pick_mic_index()
+    except RecordError:
+        pass
 
 
 class Recorder:
+    """把麦克风写成内存里的 16k PCM，边录边回调，结束时不等待写文件。"""
+
     def __init__(self) -> None:
         self._proc: Optional[subprocess.Popen] = None
-        self._path: Optional[str] = None
+        self._reader: Optional[threading.Thread] = None
+        self._stderr_thread: Optional[threading.Thread] = None
+        self._on_chunk: Optional[Callable[[bytes], None]] = None
+        self._pcm = bytearray()
+        self._err = b""
+        self._lock = threading.Lock()
 
-    def start(self) -> None:
+    def start(self, on_chunk: Optional[Callable[[bytes], None]] = None) -> None:
         self.stop()
-        fd, path = tempfile.mkstemp(prefix="sayclear-", suffix=".wav")
-        os.close(fd)
-        os.remove(path)
-        self._path = path
+        self._on_chunk = on_chunk
+        self._pcm = bytearray()
+        self._err = b""
         mic = pick_mic_index()
         cmd = [
             _ffmpeg(),
             "-hide_banner",
             "-loglevel",
             "error",
+            "-fflags",
+            "nobuffer",
+            "-flags",
+            "low_delay",
             "-f",
             "avfoundation",
             "-i",
             f":{mic}",
             "-ac",
-            "1",
+            str(CHANNELS),
             "-ar",
-            "16000",
-            "-c:a",
-            "pcm_s16le",
-            path,
+            str(SAMPLE_RATE),
+            "-f",
+            "s16le",
+            "pipe:1",
         ]
         self._proc = subprocess.Popen(
             cmd,
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            bufsize=0,
         )
+        self._reader = threading.Thread(target=self._read_stdout, name="sayclear-pcm", daemon=True)
+        self._stderr_thread = threading.Thread(
+            target=self._read_stderr, name="sayclear-ffmpeg-err", daemon=True
+        )
+        self._reader.start()
+        self._stderr_thread.start()
+
+    def _read_stdout(self) -> None:
+        proc = self._proc
+        if proc is None or proc.stdout is None:
+            return
+        while True:
+            chunk = proc.stdout.read(CHUNK_BYTES)
+            if not chunk:
+                break
+            with self._lock:
+                self._pcm.extend(chunk)
+            cb = self._on_chunk
+            if cb:
+                try:
+                    cb(chunk)
+                except Exception:
+                    pass
+
+    def _read_stderr(self) -> None:
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        self._err = proc.stderr.read() or b""
 
     def stop(self) -> Optional[bytes]:
         proc = self._proc
-        path = self._path
         self._proc = None
-        self._path = None
         if proc is None:
+            self._on_chunk = None
             return None
         if proc.poll() is None:
-            proc.send_signal(signal.SIGINT)
+            proc.terminate()
             try:
-                proc.wait(timeout=3)
+                proc.wait(timeout=0.4)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                proc.wait(timeout=2)
-        err = b""
-        if proc.stderr:
-            err = proc.stderr.read() or b""
-        data = b""
-        if path and os.path.isfile(path):
-            with open(path, "rb") as fh:
-                data = fh.read()
-            os.remove(path)
-        if len(data) < 800:
-            msg = err.decode("utf-8", errors="replace").strip() or "没有录到声音"
+                try:
+                    proc.wait(timeout=0.4)
+                except subprocess.TimeoutExpired:
+                    pass
+        if self._reader:
+            self._reader.join(timeout=0.6)
+        if self._stderr_thread:
+            self._stderr_thread.join(timeout=0.2)
+        self._reader = None
+        self._stderr_thread = None
+        self._on_chunk = None
+        with self._lock:
+            data = bytes(self._pcm)
+        if len(data) < SAMPLE_RATE:  # 少于约 0.5 秒
+            msg = self._err.decode("utf-8", errors="replace").strip() or "没有录到声音"
             raise RecordError(msg)
         return data
