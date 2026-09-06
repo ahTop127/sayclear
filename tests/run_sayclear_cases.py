@@ -77,6 +77,22 @@ def paragraph():
     return _check
 
 
+def title_then_numbered():
+    def _check(text: str) -> str | None:
+        lines = [ln.strip() for ln in text.strip().splitlines() if ln.strip()]
+        if not lines:
+            return "空输出"
+        if re.match(r"^1[\.、\)]\s+", lines[0]):
+            return "分点前应有一句归纳标题"
+        if len(lines[0]) > 24:
+            return "标题过长：" + lines[0]
+        if not has_numbered(text):
+            return "应为标题 + 1. 2. 分点"
+        return None
+
+    return _check
+
+
 def empty_or_fail():
     return "__empty_or_fail__"
 
@@ -96,17 +112,17 @@ CASES = [
         "O2",
         "这个页面有几个地方需要改，按钮太大了，颜色也需要调整一下，然后整体再简洁一点。",
         [
-            numbered(),
+            title_then_numbered(),
             contains_all("按钮", "颜色"),
-            contains_none("有几个地方需要改"),
+            contains_none("有几个地方需要改", "我理解你的需求是"),
         ],
-        "场景 B：并列改点分点",
+        "场景 B：归纳标题 + 并列改点",
     ),
     Case(
         "O3",
         "把这个 button 改小一点，再把 padding 调一下，那个 hover 状态的颜色太暗了。",
         [
-            numbered(),
+            title_then_numbered(),
             contains_all("button", "padding", "hover"),
             contains_none("内边距"),
         ],
@@ -116,10 +132,10 @@ CASES = [
         "O4",
         "明天上午先去超市，然后下午去图书馆，晚上回来把报告写完。",
         [
-            numbered(),
-            contains_all("超市", "图书馆", "报告"),
+            title_then_numbered(),
+            contains_all("明天", "超市", "图书馆", "报告"),
         ],
-        "场景 D：有顺序的多步",
+        "场景 D：贴近原话归纳 + 分点",
     ),
     Case(
         "O5",
@@ -146,7 +162,11 @@ CASES = [
     Case(
         "O8",
         "把按钮改小，对了，标题也改成 About",
-        [contains_all("按钮", "About"), contains_none("关于")],
+        [
+            title_then_numbered(),
+            contains_all("按钮", "About"),
+            contains_none("关于"),
+        ],
         "补充不是覆盖",
     ),
     Case(
@@ -178,6 +198,75 @@ CASES = [
         "那个那个",
         [empty_or_fail()],
         "无意义垫话不应填入",
+    ),
+    Case(
+        "S2",
+        "不对",
+        [contains_all("不对"), paragraph()],
+        "单独纠正有含义，要写入",
+    ),
+    Case(
+        "S4",
+        "好的，用 TypeScript",
+        [contains_all("TypeScript"), contains_none("好的"), paragraph()],
+        "句首确认只是起头，留后面",
+    ),
+    Case(
+        "S6",
+        "把按钮改小，不对，改成图标",
+        [contains_all("图标"), contains_none("不对"), paragraph()],
+        "改口信号不要当正文",
+    ),
+    Case(
+        "T1",
+        "今天要把饭吃了，然后去锻炼",
+        [
+            title_then_numbered(),
+            contains_all("今天", "饭", "锻炼"),
+        ],
+        "日程也可归纳，标题贴原话",
+    ),
+    Case(
+        "T2",
+        "记得把周报交了，顺便约一下设计评审",
+        [
+            title_then_numbered(),
+            contains_all("周报", "设计评审"),
+        ],
+        "待办也可归纳，不限这一类",
+    ),
+    Case(
+        "T5",
+        "先把 timeout 改成 30，再把 hover 颜色调亮",
+        [
+            title_then_numbered(),
+            contains_all("timeout", "30", "hover"),
+        ],
+        "标题带原词，英文不翻译",
+    ),
+    Case(
+        "T7",
+        "帮我查一下 2024 年 WWDC 的 AI 功能，再看看 Vision 相关的 session",
+        [
+            title_then_numbered(),
+            contains_all("WWDC", "AI", "Vision", "session"),
+        ],
+        "调研问题也可归纳",
+    ),
+    Case(
+        "T8",
+        "今天要把饭吃了",
+        [contains_all("今天", "饭"), paragraph()],
+        "一件事：无标题、不分点",
+    ),
+    Case(
+        "T10",
+        "今日安排就是吃饭然后锻炼",
+        [
+            title_then_numbered(),
+            contains_all("今日安排", "吃饭", "锻炼"),
+        ],
+        "用户已起标题则沿用",
     ),
 ]
 
@@ -236,6 +325,8 @@ def run_client_cases() -> list[Result]:
     rows.append(Result("C5", ok, 0, "收到", [] if ok else ["短确认应可兜底填入"]))
     ok = short_reply_passthrough("那个那个") is None
     rows.append(Result("C6", ok, 0, "那个那个", [] if ok else ["垫话不应兜底填入"]))
+    ok = short_reply_passthrough("不对") == "不对"
+    rows.append(Result("C7", ok, 0, "不对", [] if ok else ["单独「不对」应可兜底填入"]))
     return rows
 
 

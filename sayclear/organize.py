@@ -15,6 +15,23 @@ class OrganizeError(Exception):
     pass
 
 
+_EMPTY_PLACEHOLDERS = {
+    "（空字符串）",
+    "(空字符串)",
+    "空字符串",
+    "（空）",
+    "(空)",
+    "空",
+}
+
+
+def _clean_organize_text(text: str) -> str:
+    stripped = text.strip()
+    if stripped in _EMPTY_PLACEHOLDERS:
+        return ""
+    return stripped
+
+
 _http = requests.Session()
 _http.headers.update({"User-Agent": "curl/8.0"})
 
@@ -90,7 +107,9 @@ def organize(transcript: str) -> str:
         if passthrough:
             return passthrough
         raise OrganizeError("整理没有返回内容")
-    text = ((choices[0].get("message") or {}).get("content") or "").strip()
+    text = _clean_organize_text(
+        ((choices[0].get("message") or {}).get("content") or "")
+    )
     if not text:
         if passthrough:
             return passthrough
